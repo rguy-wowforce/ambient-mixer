@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ambient Mixer (Web Audio API)</title>
+  <style>
+    :root { --bg:#0b1020; --fg:#e6ecff; --muted:#94a3b8; --card:#121a33; --accent:#7c9eff; }
+    html,body{height:100%}
+    body{margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--fg);}
+    .wrap{max-width:920px; margin:0 auto; padding:28px}
+    .card{background:var(--card); border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{margin:0 0 8px; font-size:28px}
+    p{margin:6px 0 16px; color:var(--muted)}
+    label{display:block; font-weight:600; margin:12px 0 6px}
+    input[type="text"], input[type="url"], input[type="file"]{width:100%; padding:10px 12px; border-radius:12px; border:1px solid #1f2a49; background:#0d1430; color:var(--fg)}
+    .row{display:grid; gap:14px; grid-template-columns:1fr 1fr}
+    .row-3{display:grid; gap:14px; grid-template-columns:1fr 1fr 1fr}
+    .controls{display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:14px}
+    button{appearance:none; border:0; padding:12px 16px; background:var(--accent); color:#0a0d1a; border-radius:12px; font-weight:700; cursor:pointer}
+    button.secondary{background:#1f2a49; color:var(--fg)}
+    .slider{display:flex; gap:10px; align-items:center}
+    .hint{font-size:12px; color:#9aa7c7}
+    .log{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space:pre-wrap; background:#0a0f24; padding:12px; border-radius:12px; height:120px; overflow:auto; border:1px solid #1f2a49}
+    .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#15204a; color:#c6d2ff; font-size:12px; margin-left:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Ambient Mixer <span class="badge">Web Audio API</span></h1>
+      <p>Blend your ElevenLabs voice with an ambient loop, entirely in the browser. Works with file uploads or CORS-enabled URLs (mp3/wav/ogg). No server required.</p>
+
+      <div class="row">
+        <div>
+          <label for="voiceUrl">Voice URL (optional)</label>
+          <input id="voiceUrl" type="url" placeholder="https://…/voice.mp3" />
+          <div class="hint">Or upload a file below</div>
+          <input id="voiceFile" type="file" accept="audio/*" />
+        </div>
+        <div>
+          <label for="ambientUrl">Ambient URL (optional)</label>
+          <input id="ambientUrl" type="url" placeholder="https://…/ambient.mp3" />
+          <div class="hint">Or upload a file below (will loop)</div>
+          <input id="ambientFile" type="file" accept="audio/*" />
+        </div>
+      </div>
+
+      <div class="row-3">
+        <div class="slider">
+          <label style="margin:0">Voice</label>
+          <input id="voiceGain" type="range" min="0" max="1" step="0.01" value="1" />
+          <span id="voiceGainVal">1.00</span>
+        </div>
+        <div class="slider">
+          <label style="margin:0">Ambient</label>
+          <input id="ambGain" type="range" min="0" max="1" step="0.01" value="0.2" />
+          <span id="ambGainVal">0.20</span>
+        </div>
+        <div class="slider">
+          <label style="margin:0">Limiter</label>
+          <input id="limThresh" type="range" min="-36" max="0" step="1" value="-3" />
+          <span id="limThreshVal">-3 dB</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="start">▶️ Start</button>
+        <button id="stop" class="secondary">⏹ Stop</button>
+        <label style="display:flex; gap:8px; align-items:center">
+          <input id="loopAmbient" type="checkbox" checked /> Loop ambient
+        </label>
+      </div>
+
+      <p class="hint">Tip: If your audio URLs are on another domain, ensure they send <code>Access-Control-Allow-Origin: *</code> or this page's origin. Autoplay requires clicking “Start”.</p>
+
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script>
+  const log = (...a)=>{ const el=document.getElementById('log'); el.textContent += a.join(' ')+'\n'; el.scrollTop = el.scrollHeight }
+
+  let ctx, master, voiceGain, ambGain, limiter, voiceSrc, ambSrc;
+
+  function createLimiter(context, thresholdDb=-3) {
+    // Simple brickwall-ish limiter via DynamicsCompressorNode
+    const comp = context.createDynamicsCompressor();
+    comp.threshold.value = thresholdDb; // dB
+    comp.knee.value = 0; // hard knee
+    comp.ratio.value = 20; // high ratio
+    comp.attack.value = 0.003;
+    comp.release.value = 0.050;
+    return comp;
+  }
+
+  async function makeNodeFromFile(file, loop=false) {
+    const objUrl = URL.createObjectURL(file);
+    const el = new Audio(objUrl);
+    el.crossOrigin = 'anonymous';
+    el.loop = loop;
+    await el.play().catch(()=>{}); // primes for iOS
+    return { element: el };
+  }
+
+  async function makeNodeFromUrl(url, loop=false) {
+    const el = new Audio(url);
+    el.crossOrigin = 'anonymous';
+    el.loop = loop;
+    await el.play().catch(()=>{});
+    return { element: el };
+  }
+
+  async function wireUp() {
+    if (!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+
+    // Master chain
+    limiter = createLimiter(ctx, parseFloat(document.getElementById('limThresh').value));
+    master = ctx.createGain(); master.gain.value = 1;
+    limiter.connect(master).connect(ctx.destination);
+
+    // Gains
+    voiceGain = ctx.createGain(); voiceGain.gain.value = parseFloat(document.getElementById('voiceGain').value);
+    ambGain = ctx.createGain(); ambGain.gain.value = parseFloat(document.getElementById('ambGain').value);
+
+    // Sources
+    const vFile = document.getElementById('voiceFile').files[0];
+    const aFile = document.getElementById('ambientFile').files[0];
+    const vUrl = document.getElementById('voiceUrl').value.trim();
+    const aUrl = document.getElementById('ambientUrl').value.trim();
+    const loopAmbient = document.getElementById('loopAmbient').checked;
+
+    if (!vFile && !vUrl) log('No voice source provided — you can still monitor ambient only.');
+
+    if (vFile) voiceSrc = await makeNodeFromFile(vFile, false);
+    else if (vUrl) voiceSrc = await makeNodeFromUrl(vUrl, false);
+
+    if (aFile) ambSrc = await makeNodeFromFile(aFile, loopAmbient);
+    else if (aUrl) ambSrc = await makeNodeFromUrl(aUrl, loopAmbient);
+
+    // Connect
+    if (voiceSrc) {
+      const vs = ctx.createMediaElementSource(voiceSrc.element);
+      vs.connect(voiceGain).connect(limiter);
+      voiceSrc.element.pause(); voiceSrc.element.currentTime = 0;
+    }
+    if (ambSrc) {
+      const as = ctx.createMediaElementSource(ambSrc.element);
+      as.connect(ambGain).connect(limiter);
+      ambSrc.element.pause(); ambSrc.element.currentTime = 0;
+    }
+
+    log('Audio graph ready. Click Start to play.');
+  }
+
+  async function start() {
+    try {
+      if (!ctx) await wireUp();
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (ambSrc && ambSrc.element.paused) await ambSrc.element.play();
+      if (voiceSrc && voiceSrc.element.paused) await voiceSrc.element.play();
+      log('▶️ Playing');
+    } catch (e) { log('Error starting:', e.message); }
+  }
+
+  function stop() {
+    if (!ctx) return;
+    if (ambSrc) { ambSrc.element.pause(); ambSrc.element.currentTime = 0; }
+    if (voiceSrc) { voiceSrc.element.pause(); voiceSrc.element.currentTime = 0; }
+    log('⏹ Stopped');
+  }
+
+  // UI wiring
+  document.getElementById('start').addEventListener('click', start);
+  document.getElementById('stop').addEventListener('click', stop);
+
+  document.getElementById('voiceGain').addEventListener('input', e=>{
+    const v = parseFloat(e.target.value); if (voiceGain) voiceGain.gain.value = v; document.getElementById('voiceGainVal').textContent = v.toFixed(2);
+  });
+  document.getElementById('ambGain').addEventListener('input', e=>{
+    const v = parseFloat(e.target.value); if (ambGain) ambGain.gain.value = v; document.getElementById('ambGainVal').textContent = v.toFixed(2);
+  });
+  document.getElementById('limThresh').addEventListener('input', e=>{
+    const v = parseFloat(e.target.value); if (limiter) limiter.threshold.value = v; document.getElementById('limThreshVal').textContent = v.toFixed(0)+' dB';
+  });
+
+  // Bonus: API for programmatic control from parent window (postMessage)
+  window.addEventListener('message', async (ev)=>{
+    if (!ev.data || typeof ev.data !== 'object') return;
+    const { type, voiceUrl, ambientUrl, ambientLoop, voiceVol, ambVol } = ev.data;
+    if (type === 'mix') {
+      if (!ctx) await wireUp();
+      if (voiceUrl) { if (!voiceSrc) voiceSrc={}; voiceSrc.element = new Audio(voiceUrl); voiceSrc.element.crossOrigin='anonymous'; }
+      if (ambientUrl) { if (!ambSrc) ambSrc={}; ambSrc.element = new Audio(ambientUrl); ambSrc.element.crossOrigin='anonymous'; ambSrc.element.loop = !!ambientLoop; }
+      if (typeof voiceVol==='number' && voiceGain) voiceGain.gain.value = voiceVol;
+      if (typeof ambVol==='number' && ambGain) ambGain.gain.value = ambVol;
+      start();
+    }
+  });
+
+  // Show initial graph without starting audio (for quick usage)
+  wireUp();
+  </script>
+</body>
+</html>
