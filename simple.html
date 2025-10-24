@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<title>Audio Sanity Test</title>
+<body style="background:#0b0f14;color:#e7edf5;font-family:system-ui;margin:2rem">
+  <h1>Audio Sanity Test</h1>
+  <p>Click the buttons. No mixers, no libraries — just raw <code>&lt;audio&gt;</code>.</p>
+
+  <h3>Voice</h3>
+  <audio id="v" controls src="https://rguy-wowforce.github.io/ambient-mixer/voice.mp3"></audio>
+
+  <h3>Ambient (loops)</h3>
+  <audio id="a" controls loop src="https://rguy-wowforce.github.io/ambient-mixer/ambient.mp3"></audio>
+
+  <p style="margin-top:1rem">
+    <button id="both">Play Both</button>
+    <button id="stop">Stop</button>
+  </p>
+
+  <script>
+    const v = document.getElementById('v');
+    const a = document.getElementById('a');
+    document.getElementById('both').onclick = async () => {
+      try { await a.play(); await new Promise(r=>setTimeout(r,120)); await v.play(); }
+      catch(e){ alert('Play error: ' + e.message); }
+    };
+    document.getElementById('stop').onclick = () => { [v,a].forEach(x=>{x.pause(); x.currentTime=0;}); };
+  </script>
+</body>
+</html>
