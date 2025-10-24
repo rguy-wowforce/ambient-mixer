@@ -62,6 +62,11 @@
       </div>
       <div class="mono" id="status">stopped</div>
     </div>
+    <div class="panel" style="margin:12px 0 10px;">
+      <div class="mono small" id="log" style="white-space:pre-wrap; max-height:120px; overflow:auto;">Log ready.</div>
+    </div>
+      <div class="mono" id="status">stopped</div>
+    </div>
 
     <div class="controls" style="margin: 12px 0 18px; flex-wrap: wrap;">
       <button id="btnPlay">▶︎ Play</button>
@@ -203,11 +208,32 @@
       els.btnLoadUrls.addEventListener('click', () => {
         const v = (els.voiceUrl?.value || '').trim();
         const a = (els.ambUrl?.value || '').trim();
-        if (v) els.voice.src = v;
-        if (a) els.ambient.src = a;
+        if (v) setMediaSrc(els.voice, v, 'voice');
+        if (a) setMediaSrc(els.ambient, a, 'ambient');
         updateStatus();
       });
     }
+
+    function log(msg) { try { const el = document.getElementById('log'); el.textContent += `
+${msg}`; el.scrollTop = el.scrollHeight; } catch {} }
+
+    function setMediaSrc(el, url, label) {
+      try {
+        el.pause();
+        el.src = '';
+        el.removeAttribute('src');
+        el.load();
+      } catch {}
+      el.crossOrigin = 'anonymous';
+      el.src = url;
+      el.load();
+      el.oncanplay = () => log(`${label} loaded: ${url}`);
+      el.onerror = (e) => log(`${label} ERROR loading: ${url}`);
+    }
+
+    // If query params were present at load, force load + log
+    if (els.voice.src) setMediaSrc(els.voice, els.voice.src, 'voice');
+    if (els.ambient.src) setMediaSrc(els.ambient, els.ambient.src, 'ambient');
 
     // Audio graph
     let ctx, voiceNode, ambNode, voiceGain, ambGain;
