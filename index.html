@@ -3,203 +3,330 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ambient Mixer (Web Audio API)</title>
+  <title>Ambient + ElevenLabs Voice Mixer</title>
   <style>
-    :root { --bg:#0b1020; --fg:#e6ecff; --muted:#94a3b8; --card:#121a33; --accent:#7c9eff; }
-    html,body{height:100%}
-    body{margin:0; font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); color:var(--fg);}
-    .wrap{max-width:920px; margin:0 auto; padding:28px}
-    .card{background:var(--card); border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
-    h1{margin:0 0 8px; font-size:28px}
-    p{margin:6px 0 16px; color:var(--muted)}
-    label{display:block; font-weight:600; margin:12px 0 6px}
-    input[type="text"], input[type="url"], input[type="file"]{width:100%; padding:10px 12px; border-radius:12px; border:1px solid #1f2a49; background:#0d1430; color:var(--fg)}
-    .row{display:grid; gap:14px; grid-template-columns:1fr 1fr}
-    .row-3{display:grid; gap:14px; grid-template-columns:1fr 1fr 1fr}
-    .controls{display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:14px}
-    button{appearance:none; border:0; padding:12px 16px; background:var(--accent); color:#0a0d1a; border-radius:12px; font-weight:700; cursor:pointer}
-    button.secondary{background:#1f2a49; color:var(--fg)}
-    .slider{display:flex; gap:10px; align-items:center}
-    .hint{font-size:12px; color:#9aa7c7}
-    .log{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space:pre-wrap; background:#0a0f24; padding:12px; border-radius:12px; height:120px; overflow:auto; border:1px solid #1f2a49}
-    .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#15204a; color:#c6d2ff; font-size:12px; margin-left:8px}
+    :root {
+      --bg: #0b0f14;
+      --panel: #121824;
+      --text: #e7edf5;
+      --muted: #9db1c7;
+      --accent: #4ea1ff;
+      --accent-2: #7bffb1;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% 10%, #0f1522, #0b0f14) fixed; color: var(--text);
+      display: grid; place-items: center;
+    }
+    .card {
+      width: min(960px, 92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      backdrop-filter: blur(6px);
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: 0.2px; }
+    p { margin: 0.5rem 0 1rem; color: var(--muted); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .panel { background: var(--panel); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; }
+    .panel h2 { font-size: 1rem; margin: 0 0 10px; color: var(--accent); }
+    .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .controls button {
+      background: linear-gradient(180deg, #1e293b, #0f172a);
+      color: #e6f0ff; border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; padding: 10px 14px; cursor: pointer;
+    }
+    .controls button:hover { filter: brightness(1.1); }
+    .slider { width: 220px; }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+    .hint { font-size: 0.9rem; color: var(--muted); }
+    .small { font-size: 0.85rem; opacity: 0.9; }
+    .grid { display: grid; gap: 10px; }
+    label { font-size: 0.9rem; color: var(--muted); }
+    input[type="file"]::file-selector-button {
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 10px; margin-right: 10px; background: #0f172a; color: #d8e7ff; cursor: pointer;
+    }
+    .badge { padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.12); color: #cfe6ff; }
+    .stack { display: grid; gap: 8px; }
+    .spacer { height: 6px; }
+    .row-1 { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.85rem; color: #cbe0ff; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Ambient Mixer <span class="badge">Web Audio API</span></h1>
-      <p>Blend your ElevenLabs voice with an ambient loop, entirely in the browser. Works with file uploads or CORS-enabled URLs (mp3/wav/ogg). No server required.</p>
-
-      <div class="row">
-        <div>
-          <label for="voiceUrl">Voice URL (optional)</label>
-          <input id="voiceUrl" type="url" placeholder="https://…/voice.mp3" />
-          <div class="hint">Or upload a file below</div>
-          <input id="voiceFile" type="file" accept="audio/*" />
-        </div>
-        <div>
-          <label for="ambientUrl">Ambient URL (optional)</label>
-          <input id="ambientUrl" type="url" placeholder="https://…/ambient.mp3" />
-          <div class="hint">Or upload a file below (will loop)</div>
-          <input id="ambientFile" type="file" accept="audio/*" />
-        </div>
+  <div class="card">
+    <div class="row-1">
+      <div>
+        <h1>Ambient + ElevenLabs Voice Mixer</h1>
+        <p>Plays your agent’s voice with a looping ambient bed. Drop in <span class="badge">voice.mp3</span> and <span class="badge">ambient.mp3</span> or pick files below. Volumes persist locally.</p>
       </div>
-
-      <div class="row-3">
-        <div class="slider">
-          <label style="margin:0">Voice</label>
-          <input id="voiceGain" type="range" min="0" max="1" step="0.01" value="1" />
-          <span id="voiceGainVal">1.00</span>
-        </div>
-        <div class="slider">
-          <label style="margin:0">Ambient</label>
-          <input id="ambGain" type="range" min="0" max="1" step="0.01" value="0.2" />
-          <span id="ambGainVal">0.20</span>
-        </div>
-        <div class="slider">
-          <label style="margin:0">Limiter</label>
-          <input id="limThresh" type="range" min="-36" max="0" step="1" value="-3" />
-          <span id="limThreshVal">-3 dB</span>
-        </div>
-      </div>
-
-      <div class="controls">
-        <button id="start">▶️ Start</button>
-        <button id="stop" class="secondary">⏹ Stop</button>
-        <label style="display:flex; gap:8px; align-items:center">
-          <input id="loopAmbient" type="checkbox" checked /> Loop ambient
-        </label>
-      </div>
-
-      <p class="hint">Tip: If your audio URLs are on another domain, ensure they send <code>Access-Control-Allow-Origin: *</code> or this page's origin. Autoplay requires clicking “Start”.</p>
-
-      <div class="log" id="log"></div>
+      <div class="mono" id="status">stopped</div>
     </div>
+
+    <div class="controls" style="margin: 12px 0 18px; flex-wrap: wrap;">
+      <button id="btnPlay">▶︎ Play</button>
+      <button id="btnPause">⏸︎ Pause</button>
+      <button id="btnStop">■ Stop</button>
+      <span class="hint">First tap may be needed on mobile due to autoplay policies.</span>
+    </div>
+
+    <!-- URL loaders -->
+    <div class="panel" style="margin-bottom:14px;">
+      <h2>Load by URL (optional)</h2>
+      <div class="grid">
+        <label>Voice URL</label>
+        <input id="voiceUrl" type="url" placeholder="https://…/voice.mp3" />
+        <label>Ambient URL</label>
+        <input id="ambUrl" type="url" placeholder="https://…/ambient.mp3" />
+        <div class="controls">
+          <button id="btnLoadUrls">Load URLs</button>
+          <span class="hint">Tip: you can also pass <span class="mono">?voice=…&ambient=…</span> as query params.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <h2>ElevenLabs Voice</h2>
+        <div class="grid">
+          <label>Pick or drop a file (e.g., <code>voice.mp3</code>)</label>
+          <input id="voiceFile" type="file" accept="audio/*" />
+          <div class="controls">
+            <label>Voice volume</label>
+            <input id="voiceVol" class="slider" type="range" min="0" max="1" step="0.01" />
+            <span id="voiceVolOut" class="small"></span>
+          </div>
+          <div class="controls">
+            <label>Playback</label>
+            <select id="voiceMode">
+              <option value="once">Play once</option>
+              <option value="loop">Loop</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Ambient Bed</h2>
+        <div class="grid">
+          <label>Pick or drop a file (e.g., <code>ambient.mp3</code>)</label>
+          <input id="ambFile" type="file" accept="audio/*" />
+          <div class="controls">
+            <label>Ambient volume</label>
+            <input id="ambVol" class="slider" type="range" min="0" max="1" step="0.01" />
+            <span id="ambVolOut" class="small"></span>
+          </div>
+          <div class="controls">
+            <label>Loop ambient</label>
+            <input id="ambLoop" type="checkbox" checked />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-2">
+      <div class="panel">
+        <h2>Quick Tips</h2>
+        <ul class="small">
+          <li>Name your files <code>voice.mp3</code> and <code>ambient.mp3</code> to auto-load from the same folder.</li>
+          <li>Keep ambient around −20 to −30 dB relative to voice for subtlety.</li>
+          <li>Use <em>Loop</em> for ambient; voice usually <em>Play once</em>.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h2>Integrating with ElevenLabs</h2>
+        <p class="small">Point your agent to save generated audio as <code>voice.mp3</code> in this directory (via your pipeline or CI). Ambient can be any loopable bed; replace <code>ambient.mp3</code> whenever you like.</p>
+      </div>
+    </div>
+
+    <!-- Hidden audio elements used as sources -->
+    <audio id="voice" crossorigin="anonymous"></audio>
+    <audio id="ambient" crossorigin="anonymous" loop></audio>
   </div>
 
   <script>
-  const log = (...a)=>{ const el=document.getElementById('log'); el.textContent += a.join(' ')+'\n'; el.scrollTop = el.scrollHeight }
+    const els = {
+      voice: document.getElementById('voice'),
+      ambient: document.getElementById('ambient'),
+      voiceFile: document.getElementById('voiceFile'),
+      ambFile: document.getElementById('ambFile'),
+      voiceVol: document.getElementById('voiceVol'),
+      ambVol: document.getElementById('ambVol'),
+      voiceVolOut: document.getElementById('voiceVolOut'),
+      ambVolOut: document.getElementById('ambVolOut'),
+      voiceMode: document.getElementById('voiceMode'),
+      ambLoop: document.getElementById('ambLoop'),
+      btnPlay: document.getElementById('btnPlay'),
+      btnPause: document.getElementById('btnPause'),
+      btnStop: document.getElementById('btnStop'),
+      status: document.getElementById('status'),
+      voiceUrl: document.getElementById('voiceUrl'),
+      ambUrl: document.getElementById('ambUrl'),
+      btnLoadUrls: document.getElementById('btnLoadUrls'),
+    };
 
-  let ctx, master, voiceGain, ambGain, limiter, voiceSrc, ambSrc;
+    // Persisted settings
+    const get = (k, d) => { try { const v = localStorage.getItem(k); return v==null? d : JSON.parse(v); } catch { return d; } };
+    const set = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-  function createLimiter(context, thresholdDb=-3) {
-    // Simple brickwall-ish limiter via DynamicsCompressorNode
-    const comp = context.createDynamicsCompressor();
-    comp.threshold.value = thresholdDb; // dB
-    comp.knee.value = 0; // hard knee
-    comp.ratio.value = 20; // high ratio
-    comp.attack.value = 0.003;
-    comp.release.value = 0.050;
-    return comp;
-  }
+    // Defaults
+    els.voiceVol.value = get('voiceVol', 0.9);
+    els.ambVol.value = get('ambVol', 0.25);
+    els.voiceMode.value = get('voiceMode', 'once');
+    els.ambLoop.checked = get('ambLoop', true);
+    syncVolLabels();
 
-  async function makeNodeFromFile(file, loop=false) {
-    const objUrl = URL.createObjectURL(file);
-    const el = new Audio(objUrl);
-    el.crossOrigin = 'anonymous';
-    el.loop = loop;
-    await el.play().catch(()=>{}); // primes for iOS
-    return { element: el };
-  }
+    // Try autoload local files if present in same directory
+    fetch('voice.mp3', { method: 'HEAD' }).then(r => { if (r.ok && !els.voice.src) els.voice.src = 'voice.mp3'; });
+    fetch('ambient.mp3', { method: 'HEAD' }).then(r => { if (r.ok && !els.ambient.src) els.ambient.src = 'ambient.mp3'; });
 
-  async function makeNodeFromUrl(url, loop=false) {
-    const el = new Audio(url);
-    el.crossOrigin = 'anonymous';
-    el.loop = loop;
-    await el.play().catch(()=>{});
-    return { element: el };
-  }
+    // Load from URL query params if provided (?voice=…&ambient=…)
+    const qp = new URLSearchParams(location.search);
+    const voiceQP = qp.get('voice');
+    const ambQP = qp.get('ambient');
+    if (voiceQP) { els.voice.src = voiceQP; els.voiceUrl && (els.voiceUrl.value = voiceQP); }
+    if (ambQP) { els.ambient.src = ambQP; els.ambUrl && (els.ambUrl.value = ambQP); }; });
+    fetch('ambient.mp3', { method: 'HEAD' }).then(r => { if (r.ok) els.ambient.src = 'ambient.mp3'; });
 
-  async function wireUp() {
-    if (!ctx) ctx = new (window.AudioContext||window.webkitAudioContext)();
+    // File pickers
+    els.voiceFile.addEventListener('change', e => {
+      const f = e.target.files?.[0];
+      if (f) { els.voice.src = URL.createObjectURL(f); console.log('Loaded voice file:', f.name); }
+    });
+    els.ambFile.addEventListener('change', e => {
+      const f = e.target.files?.[0];
+      if (f) { els.ambient.src = URL.createObjectURL(f); console.log('Loaded ambient file:', f.name); }
+    });
 
-    // Master chain
-    limiter = createLimiter(ctx, parseFloat(document.getElementById('limThresh').value));
-    master = ctx.createGain(); master.gain.value = 1;
-    limiter.connect(master).connect(ctx.destination);
-
-    // Gains
-    voiceGain = ctx.createGain(); voiceGain.gain.value = parseFloat(document.getElementById('voiceGain').value);
-    ambGain = ctx.createGain(); ambGain.gain.value = parseFloat(document.getElementById('ambGain').value);
-
-    // Sources
-    const vFile = document.getElementById('voiceFile').files[0];
-    const aFile = document.getElementById('ambientFile').files[0];
-    const vUrl = document.getElementById('voiceUrl').value.trim();
-    const aUrl = document.getElementById('ambientUrl').value.trim();
-    const loopAmbient = document.getElementById('loopAmbient').checked;
-
-    if (!vFile && !vUrl) log('No voice source provided — you can still monitor ambient only.');
-
-    if (vFile) voiceSrc = await makeNodeFromFile(vFile, false);
-    else if (vUrl) voiceSrc = await makeNodeFromUrl(vUrl, false);
-
-    if (aFile) ambSrc = await makeNodeFromFile(aFile, loopAmbient);
-    else if (aUrl) ambSrc = await makeNodeFromUrl(aUrl, loopAmbient);
-
-    // Connect
-    if (voiceSrc) {
-      const vs = ctx.createMediaElementSource(voiceSrc.element);
-      vs.connect(voiceGain).connect(limiter);
-      voiceSrc.element.pause(); voiceSrc.element.currentTime = 0;
-    }
-    if (ambSrc) {
-      const as = ctx.createMediaElementSource(ambSrc.element);
-      as.connect(ambGain).connect(limiter);
-      ambSrc.element.pause(); ambSrc.element.currentTime = 0;
+    // Manual URL loader
+    if (els.btnLoadUrls) {
+      els.btnLoadUrls.addEventListener('click', () => {
+        const v = (els.voiceUrl?.value || '').trim();
+        const a = (els.ambUrl?.value || '').trim();
+        if (v) els.voice.src = v;
+        if (a) els.ambient.src = a;
+        updateStatus();
+      });
     }
 
-    log('Audio graph ready. Click Start to play.');
-  }
-
-  async function start() {
-    try {
-      if (!ctx) await wireUp();
-      if (ctx.state === 'suspended') await ctx.resume();
-      if (ambSrc && ambSrc.element.paused) await ambSrc.element.play();
-      if (voiceSrc && voiceSrc.element.paused) await voiceSrc.element.play();
-      log('▶️ Playing');
-    } catch (e) { log('Error starting:', e.message); }
-  }
-
-  function stop() {
-    if (!ctx) return;
-    if (ambSrc) { ambSrc.element.pause(); ambSrc.element.currentTime = 0; }
-    if (voiceSrc) { voiceSrc.element.pause(); voiceSrc.element.currentTime = 0; }
-    log('⏹ Stopped');
-  }
-
-  // UI wiring
-  document.getElementById('start').addEventListener('click', start);
-  document.getElementById('stop').addEventListener('click', stop);
-
-  document.getElementById('voiceGain').addEventListener('input', e=>{
-    const v = parseFloat(e.target.value); if (voiceGain) voiceGain.gain.value = v; document.getElementById('voiceGainVal').textContent = v.toFixed(2);
-  });
-  document.getElementById('ambGain').addEventListener('input', e=>{
-    const v = parseFloat(e.target.value); if (ambGain) ambGain.gain.value = v; document.getElementById('ambGainVal').textContent = v.toFixed(2);
-  });
-  document.getElementById('limThresh').addEventListener('input', e=>{
-    const v = parseFloat(e.target.value); if (limiter) limiter.threshold.value = v; document.getElementById('limThreshVal').textContent = v.toFixed(0)+' dB';
-  });
-
-  // Bonus: API for programmatic control from parent window (postMessage)
-  window.addEventListener('message', async (ev)=>{
-    if (!ev.data || typeof ev.data !== 'object') return;
-    const { type, voiceUrl, ambientUrl, ambientLoop, voiceVol, ambVol } = ev.data;
-    if (type === 'mix') {
-      if (!ctx) await wireUp();
-      if (voiceUrl) { if (!voiceSrc) voiceSrc={}; voiceSrc.element = new Audio(voiceUrl); voiceSrc.element.crossOrigin='anonymous'; }
-      if (ambientUrl) { if (!ambSrc) ambSrc={}; ambSrc.element = new Audio(ambientUrl); ambSrc.element.crossOrigin='anonymous'; ambSrc.element.loop = !!ambientLoop; }
-      if (typeof voiceVol==='number' && voiceGain) voiceGain.gain.value = voiceVol;
-      if (typeof ambVol==='number' && ambGain) ambGain.gain.value = ambVol;
-      start();
+    // Audio graph
+    let ctx, voiceNode, ambNode, voiceGain, ambGain;
+    function ensureCtx() {
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        voiceNode = ctx.createMediaElementSource(els.voice);
+        ambNode = ctx.createMediaElementSource(els.ambient);
+        voiceGain = ctx.createGain();
+        ambGain = ctx.createGain();
+        voiceNode.connect(voiceGain).connect(ctx.destination);
+        ambNode.connect(ambGain).connect(ctx.destination);
+        applyGains();
+      }
+      return ctx;
     }
-  });
 
-  // Show initial graph without starting audio (for quick usage)
-  wireUp();
+    function applyGains() {
+      if (!voiceGain || !ambGain) return;
+      const v = clamp(parseFloat(els.voiceVol.value), 0, 1);
+      const a = clamp(parseFloat(els.ambVol.value), 0, 1);
+      smoothSet(voiceGain.gain, v);
+      smoothSet(ambGain.gain, a);
+      syncVolLabels();
+    }
+
+    function smoothSet(param, value) {
+      const t = ctx?.currentTime || 0;
+      param.cancelScheduledValues(t);
+      param.setValueAtTime(param.value, t);
+      param.linearRampToValueAtTime(value, t + 0.05);
+    }
+
+    function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+    function syncVolLabels() {
+      els.voiceVolOut.textContent = Math.round(els.voiceVol.value * 100) + '%';
+      els.ambVolOut.textContent = Math.round(els.ambVol.value * 100) + '%';
+    }
+
+    // Loop toggles & mode
+    function syncModes() {
+      els.ambient.loop = !!els.ambLoop.checked;
+      els.voice.loop = els.voiceMode.value === 'loop';
+    }
+
+    // Transport controls
+    async function playAll() {
+      ensureCtx();
+      syncModes();
+      applyGains();
+      try { await ctx.resume(); } catch {}
+      // Start ambient first for bed
+      if (els.ambient.src) {
+        if (els.ambient.paused) {
+          try { await els.ambient.play(); } catch {}
+        }
+      }
+      // Start voice after small offset to avoid click
+      if (els.voice.src) {
+        setTimeout(async () => {
+          if (els.voice.paused) { try { await els.voice.play(); } catch {} }
+        }, 80);
+      }
+      updateStatus();
+    }
+
+    function pauseAll() {
+      els.voice.pause();
+      els.ambient.pause();
+      updateStatus();
+    }
+
+    function stopAll() {
+      els.voice.pause(); els.voice.currentTime = 0;
+      els.ambient.pause(); els.ambient.currentTime = 0;
+      updateStatus();
+    }
+
+    function updateStatus() {
+      const v = els.voice.paused ? 'paused' : 'playing';
+      const a = els.ambient.paused ? 'paused' : 'playing';
+      els.status.textContent = `voice: ${v} | ambient: ${a}`;
+    }
+
+    // Persist UI changes
+    els.voiceVol.addEventListener('input', () => { set('voiceVol', els.voiceVol.value); applyGains(); });
+    els.ambVol.addEventListener('input', () => { set('ambVol', els.ambVol.value); applyGains(); });
+    els.voiceMode.addEventListener('change', () => { set('voiceMode', els.voiceMode.value); syncModes(); });
+    els.ambLoop.addEventListener('change', () => { set('ambLoop', els.ambLoop.checked); syncModes(); });
+
+    // Buttons
+    els.btnPlay.addEventListener('click', playAll);
+    els.btnPause.addEventListener('click', pauseAll);
+    els.btnStop.addEventListener('click', stopAll);
+
+    // Mobile/Autoplay unlock: resume context on first user gesture
+    const unlock = () => { if (ctx?.state === 'suspended') ctx.resume(); window.removeEventListener('touchstart', unlock); window.removeEventListener('click', unlock); };
+    window.addEventListener('touchstart', unlock, { once: true });
+    window.addEventListener('click', unlock, { once: true });
+
+    // Keep status in sync with element events
+    ['play','pause','ended'].forEach(ev => {
+      els.voice.addEventListener(ev, updateStatus);
+      els.ambient.addEventListener(ev, updateStatus);
+    });
+
+    // Drag-and-drop support
+    document.addEventListener('dragover', e => { e.preventDefault(); });
+    document.addEventListener('drop', e => {
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files || []);
+      for (const f of files) {
+        if (f.type.startsWith('audio/')) {
+          if (!els.voice.src) { els.voice.src = URL.createObjectURL(f); }
+          else { els.ambient.src = URL.createObjectURL(f); }
+        }
+      }
+    });
   </script>
 </body>
 </html>
