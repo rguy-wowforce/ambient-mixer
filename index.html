@@ -72,6 +72,9 @@
       <button id="btnPlay">▶︎ Play</button>
       <button id="btnPause">⏸︎ Pause</button>
       <button id="btnStop">■ Stop</button>
+      <label style="display:flex;align-items:center;gap:8px;margin-left:12px;">
+        <input id="directMode" type="checkbox" /> Direct mode (no Web Audio)
+      </label>
       <span class="hint">First tap may be needed on mobile due to autoplay policies.</span>
     </div>
 
@@ -236,8 +239,10 @@ ${msg}`; el.scrollTop = el.scrollHeight; } catch {} }
     if (els.ambient.src) setMediaSrc(els.ambient, els.ambient.src, 'ambient');
 
     // Audio graph
-    let ctx, voiceNode, ambNode, voiceGain, ambGain;
+    let ctx, voiceNode, ambNode, voiceGain, ambGain, bypassCtxFlag=false;
     function ensureCtx() {
+      if (els.directMode?.checked) { bypassCtxFlag = true; return null; }
+      bypassCtxFlag = false;
       if (!ctx) {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         voiceNode = ctx.createMediaElementSource(els.voice);
@@ -250,13 +255,19 @@ ${msg}`; el.scrollTop = el.scrollHeight; } catch {} }
       }
       return ctx;
     }
+      return ctx;
+    }
 
     function applyGains() {
-      if (!voiceGain || !ambGain) return;
       const v = clamp(parseFloat(els.voiceVol.value), 0, 1);
       const a = clamp(parseFloat(els.ambVol.value), 0, 1);
-      smoothSet(voiceGain.gain, v);
-      smoothSet(ambGain.gain, a);
+      if (bypassCtxFlag || !voiceGain || !ambGain) {
+        els.voice.volume = v;
+        els.ambient.volume = a;
+      } else {
+        smoothSet(voiceGain.gain, v);
+        smoothSet(ambGain.gain, a);
+      }
       syncVolLabels();
     }
 
@@ -282,10 +293,16 @@ ${msg}`; el.scrollTop = el.scrollHeight; } catch {} }
 
     // Transport controls
     async function playAll() {
-      ensureCtx();
+      const ac = ensureCtx();
       syncModes();
       applyGains();
-      try { await ctx.resume(); } catch {}
+      try { await ac?.resume?.(); } catch {}
+      try {
+        if (els.ambient.src && els.ambient.paused) await els.ambient.play();
+        if (els.voice.src) setTimeout(async () => { if (els.voice.paused) await els.voice.play(); }, 60);
+      } catch (e) { log('Play error: ' + (e?.message || e)); }
+      updateStatus();
+    } catch {}
       // Start ambient first for bed
       if (els.ambient.src) {
         if (els.ambient.paused) {
